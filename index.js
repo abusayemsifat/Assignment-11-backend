@@ -28,12 +28,13 @@ async function run() {
 
         const database = client.db('missionscic11DB')
         const userCollections = database.collection('user')
+        const requestsCollections = database.collection('request')
 
         app.post('/users', async(req, res)=>{
             const userInfo = req.body;
-            userInfo.role = "buyer";
-            userInfo.crestedAt = new Date();
-
+            userInfo.createdAt = new Date();
+            userInfo.role = 'donor';
+            userInfo.status = 'active';
             const result = await userCollections.insertOne(userInfo);
 
             res.send(result)
@@ -44,6 +45,24 @@ async function run() {
 
             const query = {email:email }
             const result = await userCollections.findOne(query)
+            res.send(result)
+        })
+
+
+        // Products
+
+        app.post('/requests', async(req, res)=>{
+            const data = req.body;
+            data.crestedAt = new Date();
+            const result = await requestsCollections.insertOne(data)
+            res.send(result)
+        })
+
+        app.get('/manager/products/:email', async(req, res)=>{
+            const email = req.params.email;
+            const query = {managerEmail: email};
+
+            const result = await productCollections.find(query).toArray();
             res.send(result)
         })
         
