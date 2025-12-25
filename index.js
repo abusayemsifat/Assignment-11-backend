@@ -113,7 +113,10 @@ async function run() {
             const query = {requester_email:email};
 
             const result = await requestsCollections.find(query).limit(size).skip(size*page).toArray();
-            res.send(result)
+
+            const totalRequest = await requestsCollections.countDocuments(query);
+
+            res.send({request: result, totalRequest})
         })
 
         // await client.db("admin").command({ ping: 1 });
