@@ -15,22 +15,22 @@ admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
 });
 
-const verifyFBToken = async (req, res, next)=>{
+const verifyFBToken = async (req, res, next) => {
     const token = req.headers.authorization;
 
-    if(!token){
-        return res.status(401).send({message: 'unauthorize access'})
+    if (!token) {
+        return res.status(401).send({ message: 'unauthorize access' })
     }
 
-    try{
+    try {
         const idToken = token.split(' ')[1]
         const decoded = await admin.auth().verifyIdToken(idToken)
         console.log("decoded info", decoded)
         req.decoded_email = decoded.email;
         next();
     }
-    catch(error){
-        return res.status(401).send({message: 'unauthorize access'})
+    catch (error) {
+        return res.status(401).send({ message: 'unauthorize access' })
     }
 }
 
@@ -67,7 +67,7 @@ async function run() {
             res.send(result)
         })
 
-        app.get('/users', verifyFBToken, async (req, res)=>{
+        app.get('/users', verifyFBToken, async (req, res) => {
             const result = await userCollections.find().toArray();
             res.status(200).send(result)
         })
@@ -77,6 +77,20 @@ async function run() {
 
             const query = { email: email }
             const result = await userCollections.findOne(query)
+            res.send(result)
+        })
+
+        app.patch('/update/user/status', verifyFBToken, async (req, res) => {
+            const { email, status } = req.query;
+            const query = { email: email };
+
+            const updateStatus = {
+                $set: {
+                    status: status
+                }
+            }
+            const result = await userCollections.updateOne(query, updateStatus)
+
             res.send(result)
         })
 
@@ -90,14 +104,13 @@ async function run() {
             res.send(result)
         })
 
-        app.get('/manager/products/:email', async (req, res) => {
-            const email = req.params.email;
-            const query = { managerEmail: email };
+        app.get('/my-request', verifyFBToken, async(req, res)=>{
+            const email = req.decoded_email;
+            const query = {requester_email:email};
 
-            const result = await productCollections.find(query).toArray();
+            const result = await requestsCollections.findOne(query).toArray();
             res.send(result)
         })
-
 
         // await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
