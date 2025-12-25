@@ -2,6 +2,26 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors')
 const port = process.env.PORT || 3000
+const stripe = require('stripe')(process.env.STRIPE_SECRET);
+const crypto = require('crypto');
+
+stripe.products.create({
+    name: 'Starter Subscription',
+    description: '$12/Month subscription',
+}).then(product => {
+    stripe.prices.create({
+        unit_amount: 1200,
+        currency: 'usd',
+        recurring: {
+            interval: 'month',
+        },
+        product: product.id,
+    }).then(price => {
+        console.log('Success! Here is your starter subscription product id: ' + product.id);
+        console.log('Success! Here is your starter subscription price id: ' + price.id);
+    });
+});
+
 
 const app = express();
 app.use(cors());
@@ -56,6 +76,7 @@ async function run() {
         const database = client.db('missionscic11DB')
         const userCollections = database.collection('user')
         const requestsCollections = database.collection('request')
+        const paymentCollections = database.collection('payments')
 
         app.post('/users', async (req, res) => {
             const userInfo = req.body;
@@ -95,7 +116,7 @@ async function run() {
         })
 
 
-        // Products
+        // Requests
 
         app.post('/requests', verifyFBToken, async (req, res) => {
             const data = req.body;
@@ -104,20 +125,108 @@ async function run() {
             res.send(result)
         })
 
-        app.get('/my-request', verifyFBToken, async(req, res)=>{
+        app.get('/my-request', verifyFBToken, async (req, res) => {
             const email = req.decoded_email;
             const size = Number(req.query.size);
             const page = Number(req.query.page)
 
 
-            const query = {requester_email:email};
+            const query = { requester_email: email };
 
-            const result = await requestsCollections.find(query).limit(size).skip(size*page).toArray();
+            const result = await requestsCollections.find(query).limit(size).skip(size * page).toArray();
 
             const totalRequest = await requestsCollections.countDocuments(query);
 
-            res.send({request: result, totalRequest})
+            res.send({ request: result, totalRequest })
         })
+
+        app.get('/search-requests', async(req, res)=>{
+            const {bloodGroup, district, upazila} = req.query;
+
+            const query = {};
+            
+            if(!query){
+                return;
+            }
+            if(bloodGroup){
+                const fixed = bloodGroup.replace(/ /g, "+").trim();
+                query.blood_group = bloodGroup;
+            }
+            if(district){
+                query.recipient_district = district
+            }
+            if(upazila){
+                query.recipient_upazila = upazila
+            }
+
+            const result = await requestsCollections.find(query).toArray();
+            res.send(result)
+
+        })
+
+
+        // Payments
+        app.post('/create-payment-checkout', async (req, res) => {
+            const information = req.body;
+            console.log(information);
+            const amount = parseInt(information.donateAmount) * 100;
+
+            const session = await stripe.checkout.sessions.create({
+                line_items: [
+                    {
+                        price_data: {
+                            currency: 'usd',
+                            unit_amount: amount,
+                            product_data: {
+                                name: 'Please Donate'
+                            }
+                        },
+                        quantity: 1
+                    },
+                ],
+                mode: 'payment',
+                metadata: {
+                    donorName: information?.donorName
+                },
+                customer_email: information.donorEmail,
+                success_url: `${process.env.SITE_DOMAIN}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+                cancel_url: `${process.env.SITE_DOMAIN}/payment-cancelled`,
+            });
+
+            res.send({ url: session.url })
+
+        })
+
+        app.post('/success-payment', async (req, res) => {
+            const { session_id } = req.query;
+            const session = await stripe.checkout.sessions.retrieve(
+                session_id
+            );
+            console.log(session);
+
+            const transactionId = session.payment_intent;
+
+            const isPaymentExist = await paymentCollections.findOne({transactionId})
+
+            if(isPaymentExist){
+                console.log("fahimmmmmmmmmmmmm");
+                return res.status(400).send('Already Exist')
+            }
+
+            if(session.payment_status == 'paid'){
+                const paymentInfo = {
+                    amount: session.amount_total/100,
+                    currency: session.currency,
+                    donorEmail: session.customer_email,
+                    transactionId,
+                    payment_status: session.payment_status,
+                    paidAt: new Date()
+                }
+                const result = await paymentCollections.insertOne(paymentInfo)
+                return res.send(result)
+            }
+        })
+
 
         // await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
