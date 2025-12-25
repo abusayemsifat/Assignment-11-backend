@@ -140,22 +140,22 @@ async function run() {
             res.send({ request: result, totalRequest })
         })
 
-        app.get('/search-requests', async(req, res)=>{
-            const {bloodGroup, district, upazila} = req.query;
+        app.get('/search-requests', async (req, res) => {
+            const { bloodGroup, district, upazila } = req.query;
 
             const query = {};
-            
-            if(!query){
+
+            if (!query) {
                 return;
             }
-            if(bloodGroup){
+            if (bloodGroup) {
                 const fixed = bloodGroup.replace(/ /g, "+").trim();
-                query.blood_group = bloodGroup;
+                query.blood_group = fixed;
             }
-            if(district){
+            if (district) {
                 query.recipient_district = district
             }
-            if(upazila){
+            if (upazila) {
                 query.recipient_upazila = upazila
             }
 
@@ -206,16 +206,16 @@ async function run() {
 
             const transactionId = session.payment_intent;
 
-            const isPaymentExist = await paymentCollections.findOne({transactionId})
+            const isPaymentExist = await paymentCollections.findOne({ transactionId })
 
-            if(isPaymentExist){
+            if (isPaymentExist) {
                 console.log("fahimmmmmmmmmmmmm");
                 return res.status(400).send('Already Exist')
             }
 
-            if(session.payment_status == 'paid'){
+            if (session.payment_status == 'paid') {
                 const paymentInfo = {
-                    amount: session.amount_total/100,
+                    amount: session.amount_total / 100,
                     currency: session.currency,
                     donorEmail: session.customer_email,
                     transactionId,
@@ -225,6 +225,34 @@ async function run() {
                 const result = await paymentCollections.insertOne(paymentInfo)
                 return res.send(result)
             }
+        })
+
+        app.patch('/users/update/:email', async (req, res) => {
+            const { email } = req.params;
+            const updateData = req.body;
+
+            const query = { email: email };
+            const update = {
+                $set: {
+                    name: updateData.name,
+                    mainPhotoUrl: updateData.mainPhotoUrl,
+                    district: updateData.district,
+                    upazila: updateData.upazila
+                }
+            };
+
+            const result = await userCollections.updateOne(query, update);
+            res.send(result);
+        });
+
+        app.get('/total-donors', async (req, res) => {
+            const count = await userCollections.countDocuments({ role: 'donor' });
+            res.send({ totalDonors: count });
+        })
+
+        app.get('/total-requests', async (req, res) => {
+            const count = await requestsCollections.countDocuments();
+            res.send({ totalRequests: count });
         })
 
 
