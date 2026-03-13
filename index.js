@@ -44,9 +44,8 @@ const verifyFBToken = async (req, res, next) => {
 
     try {
         const idToken = token.split(' ')[1]
-        const decoded = await admin.auth().verifyIdToken(idToken)
-        console.log("decoded info", decoded)
-        req.decoded_email = decoded.email;
+        const decodedToken = await admin.auth().verifyIdToken(idToken)
+        req.decoded_email = decodedToken.email;
         next();
     }
     catch (error) {
@@ -69,14 +68,11 @@ const client = new MongoClient(uri, {
 
 async function run() {
     try {
-        // Connect the client to the server	(optional starting in v4.7)
-        // await client.connect();
-        // Send a ping to confirm a successful connection
-
         const database = client.db('missionscic11DB')
         const userCollections = database.collection('user')
         const requestsCollections = database.collection('request')
         const paymentCollections = database.collection('payments')
+        const contactCollections = database.collection('contacts')  // ← NEW
 
         app.post('/users', async (req, res) => {
             const userInfo = req.body;
@@ -168,7 +164,6 @@ async function run() {
         // Payments
         app.post('/create-payment-checkout', async (req, res) => {
             const information = req.body;
-            console.log(information);
             const amount = parseInt(information.donateAmount) * 100;
 
             const session = await stripe.checkout.sessions.create({
@@ -202,14 +197,12 @@ async function run() {
             const session = await stripe.checkout.sessions.retrieve(
                 session_id
             );
-            console.log(session);
 
             const transactionId = session.payment_intent;
 
             const isPaymentExist = await paymentCollections.findOne({ transactionId })
 
             if (isPaymentExist) {
-                console.log("fahimmmmmmmmmmmmm");
                 return res.status(400).send('Already Exist')
             }
 
@@ -255,11 +248,43 @@ async function run() {
             res.send({ totalRequests: count });
         })
 
+        app.get('/all-requests', async (req, res) => {
+            const result = await requestsCollections.find().toArray();
+            res.send(result);
+        })
 
-        // await client.db("admin").command({ ping: 1 });
+
+        // ── Contact ────────────────────────────────────────────────────────────
+        // POST /contact  — save a contact-form submission
+        app.post('/contact', async (req, res) => {
+            const { name, email, subject, message } = req.body;
+
+            if (!name || !email || !subject || !message) {
+                return res.status(400).send({ message: 'All fields are required.' });
+            }
+
+            const contactDoc = {
+                name,
+                email,
+                subject,
+                message,
+                submittedAt: new Date(),
+            };
+
+            const result = await contactCollections.insertOne(contactDoc);
+            res.status(201).send({ success: true, insertedId: result.insertedId });
+        });
+
+        // GET /contact  — retrieve all messages (admin only)
+        app.get('/contact', verifyFBToken, async (req, res) => {
+            const result = await contactCollections.find().sort({ submittedAt: -1 }).toArray();
+            res.send(result);
+        });
+        // ───────────────────────────────────────────────────────────────────────
+
+
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
-        // Ensures that the client will close when you finish/error
         // await client.close();
     }
 }
@@ -267,10 +292,9 @@ run().catch(console.dir);
 
 
 app.get('/', (req, res) => {
-    res.send("Hello, Mission SCIC")
+    res.send("Hello, BloodLink")
 })
 
 app.listen(port, () => {
     console.log(`Server is running on ${port}`);
 })
-
